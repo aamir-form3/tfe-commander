@@ -5,20 +5,25 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/form3tech/f3-tfe/internal/log"
 	"github.com/form3tech/f3-tfe/internal/tfe"
+	"github.com/form3tech/f3-tfe/internal/ui/component"
 	"github.com/jroimartin/gocui"
 )
 
 type UI struct {
 	gui                       *gocui.Gui
 	tfeClient                 *tfe.TFE
-	organisations, workspaces *ListView
+	organisations, workspaces *component.ListView
+	logsView, plansView       *gocui.View
+	showLog                   bool
 }
 
 const (
 	organisationsViewName = "organisations"
 	workspacesViewName    = "workspaces"
 	plansViewName         = "plans"
+	logsViewName          = "logs"
 )
 
 func BuildUI(tfeClient *tfe.TFE) (*UI, error) {
@@ -30,6 +35,7 @@ func BuildUI(tfeClient *tfe.TFE) (*UI, error) {
 	return &UI{
 		gui:       gui,
 		tfeClient: tfeClient,
+		showLog:   true,
 	}, nil
 }
 
@@ -49,8 +55,6 @@ func (ui *UI) Launch() error {
 		return err
 	}
 
-	_, _ = ui.gui.SetCurrentView(organisationsViewName)
-
 	if err := ui.gui.MainLoop(); err != nil && err != gocui.ErrQuit {
 		return err
 	}
@@ -61,16 +65,20 @@ func (ui *UI) Launch() error {
 func (ui *UI) layout(g *gocui.Gui) error {
 	var err error
 
+	if ui.gui.CurrentView() == nil {
+		_, _ = ui.gui.SetCurrentView(organisationsViewName)
+	}
+
 	maxX, maxY := g.Size()
 	g.FgColor = gocui.ColorGreen
 	g.BgColor = gocui.ColorBlack
 
-	v, err := g.SetView(organisationsViewName, 1, 1, 24, maxY-1)
+	v, err := g.SetView(organisationsViewName, 0, 0, 24, maxY-1)
 	if err != nil {
 		if err != gocui.ErrUnknownView {
 			return err
 		}
-		ui.organisations, err = NewListView(ui.gui, v, false)
+		ui.organisations, err = component.NewListView(ui.gui, v, false, ui.organisationsSelectedUpdated)
 		if err != nil {
 			return err
 		}
@@ -81,29 +89,40 @@ func (ui *UI) layout(g *gocui.Gui) error {
 		ui.organisations.SetItems(orgs)
 	}
 
-	v, err = g.SetView(workspacesViewName, 25, 1, 48, maxY-1)
+	v, err = g.SetView(workspacesViewName, 25, 0, 60, maxY-1)
 	if err != nil {
 		if err != gocui.ErrUnknownView {
 			return err
 		}
-		ui.workspaces, err = NewListView(ui.gui, v, false)
+		ui.workspaces, err = component.NewListView(ui.gui, v, true, ui.workspacesSelectedUpdated)
 		if err != nil {
 			return err
 		}
-
-		items, err := ui.tfeClient.Workspaces(context.Background())
-		if err != nil {
-			return err
-		}
-		ui.workspaces.SetItems(items)
 	}
 
-	v, err = g.SetView(plansViewName, 49, 1, maxX-1, maxY-1)
+	logsHeight := 0
+	if ui.showLog == true {
+		logsHeight = 8
+	}
+	v, err = g.SetView(plansViewName, 61, 0, maxX-1, maxY-1-logsHeight)
 	if err != nil {
 		if err != gocui.ErrUnknownView {
 			return err
 		}
+		ui.plansView = v
 		v.Autoscroll = true
+	}
+
+	if ui.showLog == true {
+		v, err = g.SetView(logsViewName, 61, maxY-logsHeight, maxX-1, maxY-1)
+		if err != nil {
+			if err != gocui.ErrUnknownView {
+				return err
+			}
+			log.Writer = v
+			ui.logsView = v
+			v.Autoscroll = true
+		}
 	}
 
 	for _, v := range g.Views() {
@@ -120,13 +139,12 @@ func (ui *UI) quit(g *gocui.Gui, v *gocui.View) error {
 }
 
 func (ui *UI) nextView(g *gocui.Gui, v *gocui.View) error {
-	plansView, _ := ui.gui.View(plansViewName)
 	currentView := g.CurrentView()
 	currentViewIdx := -1
 	allViews := g.Views()
 	for i, view := range allViews {
 		if view == currentView {
-			fmt.Fprintf(plansView, "Current view %d %s\n", i, view.Name())
+			ui.log("Current view %d %s", i, view.Name())
 			currentViewIdx = i
 			break
 		}
@@ -136,6 +154,32 @@ func (ui *UI) nextView(g *gocui.Gui, v *gocui.View) error {
 		currentViewIdx = 0
 	}
 	_, err := g.SetCurrentView(allViews[currentViewIdx].Name())
-	fmt.Fprintf(plansView, "Setting view %d %s ~> %v\n", currentViewIdx, allViews[currentViewIdx].Name(), err)
+	ui.log("Setting view %d %s ~> %v", currentViewIdx, allViews[currentViewIdx].Name(), err)
 	return err
+}
+
+func (ui *UI) log(fmt_ string, args ...interface{}) {
+	if ui.logsView != nil {
+		ui.showLog = true
+		fmt.Fprintf(ui.logsView, fmt_, args...)
+		fmt.Fprintln(ui.logsView)
+	}
+}
+
+func (ui *UI) organisationsSelectedUpdated(orgs []string) {
+	ui.tfeClient.SelectOrganizations(orgs)
+	wss, err := ui.tfeClient.Workspaces(context.Background())
+	if err != nil {
+		ui.log("Failed to fetch workspaces: %v", err)
+	}
+	if ui.workspaces != nil {
+		items := make([]string, len(wss))
+		for i, ws := range wss {
+			items[i] = ws.Name
+		}
+		ui.workspaces.SetItems(items)
+	}
+}
+
+func (ui *UI) workspacesSelectedUpdated(wss []string) {
 }

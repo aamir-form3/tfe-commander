@@ -5,6 +5,8 @@ import (
 	"fmt"
 
 	"github.com/hashicorp/go-tfe"
+
+	"github.com/form3tech/f3-tfe/internal/log"
 )
 
 func (t *TFE) Organisations(ctx context.Context) ([]string, error) {
@@ -20,18 +22,34 @@ func (t *TFE) Organisations(ctx context.Context) ([]string, error) {
 	return res, nil
 }
 
-func (t *TFE) Workspaces(ctx context.Context) ([]string, error) {
-	res := []string{}
-	for org := range t.selectedOrganizations {
-		l, err := t.client.Workspaces.List(ctx, org, tfe.WorkspaceListOptions{})
-		if err != nil {
-			return nil, err
-		}
+func (t *TFE) Workspaces(ctx context.Context) ([]Workspace, error) {
+	res := []Workspace{}
+	fmt.Fprintf(log.Writer, "listing workspaces for %d orgs\n", len(t.selectedOrganizations))
+	for _, org := range t.selectedOrganizations {
+		fmt.Fprintf(log.Writer, "listing workspaces for \"%s\"\n", org)
+		i := 0
+		for {
+			l, err := t.client.Workspaces.List(ctx, org, tfe.WorkspaceListOptions{
+				ListOptions: tfe.ListOptions{
+					PageNumber: i,
+					PageSize:   100,
+				},
+			})
+			if err != nil {
+				return nil, err
+			}
 
-		for _, ws := range l.Items {
-			res = append(res, fmt.Sprintf("%s:%s", org, ws.Name))
+			for _, ws := range l.Items {
+				res = append(res, Workspace{
+					OrganizationName: org,
+					Name:             ws.Name,
+				})
+			}
+			if l.NextPage <= 0 {
+				break
+			}
+			i = l.NextPage
 		}
-
 	}
 	return res, nil
 }

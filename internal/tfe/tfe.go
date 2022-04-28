@@ -8,8 +8,8 @@ import (
 
 type TFE struct {
 	client                *tfe.Client
-	selectedOrganizations map[string]bool
-	selectedWorkspaces    map[Workspace]bool
+	selectedOrganizations []string
+	selectedWorkspaces    []Workspace
 }
 
 type Workspace struct {
@@ -28,41 +28,23 @@ func New() (*TFE, error) {
 }
 
 func (t *TFE) SelectedWorkspaces() []Workspace {
-	res := make([]Workspace, 0, len(t.selectedWorkspaces))
-	for ws := range t.selectedWorkspaces {
-		res = append(res, ws)
-	}
+	res := make([]Workspace, len(t.selectedWorkspaces))
+	copy(res, t.selectedWorkspaces)
 	return res
 }
 
-func (t *TFE) SelectWorkspace(ws Workspace) {
-	t.selectedWorkspaces[ws] = true
-}
-
-func (t *TFE) DeselectWorkspace(ws Workspace) {
-	delete(t.selectedWorkspaces, ws)
-}
-
-func (t *TFE) IsWorkspaceSelected(ws Workspace) bool {
-	return t.selectedWorkspaces[ws]
+func (t *TFE) SelectWorkspaces(ws []Workspace) {
+	t.selectedWorkspaces = make([]Workspace, len(ws))
+	copy(t.selectedWorkspaces, ws)
 }
 
 func (t *TFE) SelectedOrganizations() []string {
-	orgs := make([]string, 0, len(t.selectedOrganizations))
-	for org := range t.selectedOrganizations {
-		orgs = append(orgs, org)
-	}
+	orgs := make([]string, len(t.selectedOrganizations))
+	copy(orgs, t.selectedOrganizations)
 	return orgs
 }
 
-func (t *TFE) SelectOrganization(org string) {
-	t.selectedOrganizations[org] = true
-}
-
-func (t *TFE) DeselectOrganization(org string) {
-	delete(t.selectedOrganizations, org)
-}
-
-func (t *TFE) IsOrganizationSelected(org string) bool {
-	return t.selectedOrganizations[org]
+func (t *TFE) SelectOrganizations(orgs []string) {
+	t.selectedOrganizations = make([]string, len(orgs))
+	copy(t.selectedOrganizations, orgs)
 }
