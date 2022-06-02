@@ -19,7 +19,7 @@ func main() {
 
 	fmt.Printf("Organizations : %+v\n", orgs)
 
-	wss, err := client.OrganizationWorkspaces(ctx, orgs[0], 1, 10)
+	wss, err := client.OrganizationWorkspaces(ctx, orgs[5], tfe.NewSearchInfo())
 	util.Must(err)
 
 	fmt.Printf("Workspaces : %+v\n", wss.Items[0].ID)
@@ -29,7 +29,7 @@ func main() {
 
 	fmt.Printf("Workspaces variables : %+v\n", wvs.Items[0].Value)
 
-	nwv, err := client.AddVariable(ctx, wss.Items[0].ID, "test-key", "test-value")
+	nwv, err := client.AddVariable(ctx, wss.Items[0].ID, tfe.NewVariableOption("test-key", "test-value"))
 	util.Must(err)
 	fmt.Printf("Workspaces variables : %+v\n", nwv.ID)
 
